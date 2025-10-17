@@ -42,7 +42,8 @@ WITH highest_price_cte AS (--to calculate higher of app or play store price
 		 END, 0 ::MONEY) AS highest_price
 	FROM app_store_apps a
 	FULL JOIN play_store_apps p
-	ON a.name = p.name),
+	ON a.name = p.name
+	ORDER BY highest_price DESC),
 
 purchase_price_cte AS(--multiplying highes price to 10000
 
@@ -55,14 +56,17 @@ SELECT
 FROM highest_price_cte
 ORDER BY purchase_price DESC),
 
+--SELECT
+--	*
+--FROM purchase_price_cte
+
 earnings_cte AS (
-	SELECT a.name,p.name,
+	SELECT *,
 	CASE WHEN a.name = p.name THEN 10000
 		 ELSE 5000
 		 END AS earning_per_month
-	FROM app_store_apps a
-	FULL JOIN play_store_apps p
-		USING (name)
+	FROM purchase_price_cte
+	
 		)
 
 SELECT
@@ -84,21 +88,19 @@ FROM earnings_cte
 -- - App store ratings should be calculated by taking the average of the scores from both app stores
 --and rounding to the nearest 0.5.
 
-WITH rating_cte AS(
-	SELECT 
-		a.name AS app_store_name,
-		p.name AS play_store_name,
+WITH combined_rating_cte AS(
+	SELECT
+		a.name,
+		p.name,
 		COALESCE(a.rating,0) AS app_store_rating,
-		COALESCE(p.rating,0) AS play_store_rating,
-		AVG(a.rating + p.rating) AS app_rating
-FROM app_store_apps a
-FULL JOIN play_store_apps p
-USING (name)
-GROUP BY a.name, p.name, a.rating, p.rating
-)
+		COALESCE(p.rating,0) AS play_store_rating
+	FROM app_store_apps a
+	FULL JOIN play_store_apps p
+	USING (name)
+		)
 
 SELECT
 	* 
-FROM rating_cte
+FROM combined_rating_cte
 
 ---------------------------------------------------------------------------------
