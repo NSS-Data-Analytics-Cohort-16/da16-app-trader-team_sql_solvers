@@ -48,7 +48,9 @@ WITH highest_price_cte AS (--to calculate higher of app or play store price
 	CASE WHEN a.price :: MONEY > p.price :: MONEY THEN a.price :: MONEY
 		 WHEN a.price :: MONEY < p.price :: MONEY THEN p.price :: MONEY
 	 	 WHEN a.price :: MONEY = p.price :: MONEY THEN p.price :: MONEY
-		 END, 0 ::MONEY) AS highest_price
+		 END, 0 ::MONEY) AS highest_price,
+	COALESCE(a.rating,0) AS app_store_rating,
+	COALESCE(p.rating,0) AS play_store_rating 
 	FROM app_store_apps a
 	FULL JOIN play_store_apps p
 	ON a.name = p.name
@@ -74,31 +76,28 @@ ORDER BY purchase_price DESC),
 -- An app that costs $200,000 will make the same per month as an app that costs $1.00. 
 -- An app that is on both app stores will make $10,000 per month. 
 
-earnings_cte AS (
-	SELECT *,
-			CASE 
-				WHEN app_store_name IS NOT NULL AND play_store_name IS NOT NULL THEN 10000
-		 		ELSE 5000
-		 	END AS earning_per_month
-		 FROM purchase_price_cte
-			)
-		
-SELECT 
-	*
-FROM earnings_cte
-	
-	
----------------------------------------------------------------------------------
 -- c. App Trader will spend an average of $1000 per month to market an app regardless of the price of
 --the app. If App Trader owns rights to the app in both stores, it can market the app for both stores
 --for a single cost of $1000 per month.
 -- An app that costs $200,000 and an app that costs $1.00 will both cost $1000 a month for marketing,
 --regardless of the number of stores it is in.
 
-marketing_cost_cte AS(
+earnings_cte AS (
+	SELECT *,
+			CASE 
+				WHEN app_store_name IS NOT NULL AND play_store_name IS NOT NULL THEN 10000
+		 		ELSE 5000
+		 	END AS earning_per_month,
+			1000 AS marketing_expense_per_month
+	FROM purchase_price_cte
+			),
+		
+--SELECT 
+--	*
+--FROM earnings_cte
 
-)
 ---------------------------------------------------------------------------------
+
 -- d. For every half point that an app gains in rating, its projected lifespan increases by one year. 
 --In other words, an app with a rating of 0 can be expected to be in use for 1 year, an app with a
 --rating of 1.0 can be expected to last 3 years, and an app with a rating of 4.0 can be expected to 
@@ -107,23 +106,32 @@ marketing_cost_cte AS(
 -- - App store ratings should be calculated by taking the average of the scores from both app stores
 --and rounding to the nearest 0.5.
 
-WITH avg_rating_cte AS(
-	SELECT
-		a.name,
-		p.name,
-		COALESCE(a.rating,0) AS app_store_rating,
-		COALESCE(p.rating,0) AS play_store_rating,
-		ROUND(ROUND(COALESCE(a.rating,0) + COALESCE(p.rating,0),0)/2,2) AS avg_ratings
-	FROM app_store_apps a
-	FULL JOIN play_store_apps p
-	USING (name)
-	GROUP BY a.name, p.name, a.rating, p.rating
-		)
+rating_cte AS(
+	SELECT *,
+		ROUND(ROUND(COALESCE(app_store_rating,0) + COALESCE(play_store_rating,0),0)/2,2) AS avg_ratings,
+		(((ROUND(ROUND(COALESCE(app_store_rating,0) + COALESCE(play_store_rating,0),0)/2,2))*2)+1) AS lifespan_years
+		FROM earnings_cte
+		),
+		
+--SELECT
+--	* 
+--FROM rating_cte 
 
-SELECT
-	* 
-FROM avg_rating_cte
-
+profit_cte AS(
+	SELECT *,
+	(((earning_per_month - marketing_expense_per_month) *12 * lifespan_years)- purchase_price) AS profit
+FROM rating_cte 
+	)
+	
+--SELECT
+--*
+--FROM profit_cte
 ---------------------------------------------------------------------------------
 --e. App Trader would prefer to work with apps that are available in both the App Store and the Play Store since they can market both for the same
 --$1000 per month.
+
+SELECT 
+*
+FROM profit_cte
+WHERE app_store_name = play_store_name
+ORDER BY lifespan_years DESC
