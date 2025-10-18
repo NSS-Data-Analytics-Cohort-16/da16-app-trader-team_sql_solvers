@@ -99,16 +99,16 @@ FROM rating_cte
 
 SELECT DISTINCT
 	app_name,
-	store,
+--	store,
 	--store_count,
 	--highest_price,
-	purchase_price,
+--	purchase_price,
 	--earning_per_month,
 --	marketing_expense_per_month
 --	apps_genre,
-	avg_ratings,
-	lifespan_years,
+--	avg_ratings,
+--	lifespan_years,
 	profit
 FROM profit_cte
 WHERE app_store_name = play_store_name
-ORDER BY profit DESC;
+ORDER BY profit DESC, app_name ASC;
