@@ -1,205 +1,95 @@
 select * from app_store_apps
-
 select * from play_store_apps
-where name ='Cardboard'
 
-select max(cast(replace(trim(price),'$','') as numeric)) from play_store_apps
+WITH cte1 AS (
+	
+	SELECT a.name AS apps_store_name,
+	 		p.name AS play_store_name,
+			a.price AS apps_store_price,
+			p.price AS play_store_price,
+			a.primary_genre AS app_genre,
+			p.genres AS play_genre,
+			a.content_rating AS app_content_rating,
+			p.content_rating AS play_content_rating,
 
-select * from play_store_apps as p
-full join app_store_apps as a
-on a.name= p.name
+			-- pick the highest price
+			
+			GREATEST(a.price, CAST(REPLACE(TRIM(p.price), '$', '') AS NUMERIC)) AS highest_price,
 
-select * from play_store_apps as p
-inner join app_store_apps as a
-on a.name= p.name
-
-
--- TO CHECK FOR DUPLICATES
-select name, count(*) 
-from app_store_apps
-group by name
-having count(*) >1
-
-select name, count(*) 
-from play_store_apps
-group by name
-having count(*) >1
-
-
-
--- Assumptions
-
--- Based on research completed prior to launching App Trader as a company, you can assume the following:
-
--- a. App Trader will purchase apps for 10,000 times the price of the app. 
---For apps that are priced from free up to $1.00, the purchase price is $10,000.   
--- - For example, an app that costs $2.00 will be purchased for $20,000.
--- - The cost of an app is not affected by how many app stores it is on. 
---A $1.00 app on the Apple app store will cost the same as a $1.00 app on both stores.     
--- - If an app is on both stores, it's purchase price will be calculated based off of the highest app price between the two stores. 
-
-	-- Finding each apps price
-	--unique_app_name, higher_price, purchase_price(price <= 1 it returns 10,000 or else multiply the price by 10,000)
-
-	SELECT 
-		app_name, 
-		price,
-		CASE
-			WHEN price<= 1 THEN 10000
-			ELSE price *10000
-		END AS purchase_price
-
-	FROM
-		(
-		SELECT 
+			-- to find purchase price[if price <= 1 then 10000 or 10000 times the price]
+			
 			CASE 
-				WHEN p.name IS NULL THEN a.name
-				ELSE p.name
-			END AS app_name,
-			GREATEST
-			(
+				WHEN GREATEST(a.price, CAST(REPLACE(TRIM(p.price), '$', '') AS NUMERIC)) <=1 THEN 10000
+				ELSE GREATEST(a.price, CAST(REPLACE(TRIM(p.price), '$', '') AS NUMERIC))*10000
+			END AS purchase_price,
+
+			-- to find store count
 			
-			COALESCE(CAST(REPLACE(TRIM(p.price), '$', '') AS NUMERIC), 0),
-	        COALESCE(a.price, 0)
-			
-			) AS price
-			
-		FROM play_store_apps AS p
-		FULL JOIN app_store_apps AS a
-		ON a.name= p.name
-		) AS t
-
-	-- OTHER TABLE
-
-	SELECT name, max(price),
-	CASE
-			WHEN price<= 1 THEN 10000
-			ELSE price *10000
-		END AS purchase_price
-	FROM
-		(
-			SELECT distinct name, price FROM app_store_apps
-			UNION all
-			SELECT DISTINCT name, 
-				CAST(REPLACE(TRIM(price),'$','') AS numeric)  FROM play_store_apps
-		) AS combined_table
-	group by name, purchase_price
-
-
-
--- b. Apps earn $5000 per month, per app store it is on, from in-app advertising and in-app purchases, regardless of the price of the app.
-    
--- - An app that costs $200,000 will make the same per month as an app that costs $1.00. 
-
--- - An app that is on both app stores will make $10,000 per month. 
-
-	-- To Find Monthly Earnings: unique_app_name, app_store_count, monthly_earnings_per_app
-
-	SELECT 
-		app_name, 
-		count(*)
-		-- CASE
-		-- 	WHEN price<= 1 THEN 10000
-		-- 	ELSE price *10000
-		-- END AS purchase_price
-
-	FROM
-		(
-		SELECT 
 			CASE 
-				WHEN p.name IS NULL THEN a.name
-				ELSE p.name
-			END AS app_name,
-			CASE
-				WHEN p.name IS NOT NULL THEN 1
-				ELSE 0
-			END +
-			CASE
-				WHEN a.name IS NOT NULL THEN 1
-				ELSE 0
-			END 
+				WHEN a.name IS NOT NULL AND p.name IS NOT NULL THEN 2
+				WHEN a.name IS NULL or p.name IS NULL THEN 1
+			END AS store_count,
+		
+			--a.review_count AS app_review_count,
+			--p.review_count AS play_review_count,
+			a.rating AS app_rating,
+			p.rating AS play_rating,
+
+			--average rating across stores
 			
-		FROM play_store_apps AS p
-		FULL JOIN app_store_apps AS a
-		ON a.name= p.name
-		) AS t
-  group by app_name
+			CASE 
+				WHEN a.rating IS NOT NULL AND p.rating IS NOT NULL THEN (a.rating + p.rating)/2
+				WHEN a.rating IS NULL  THEN p.rating
+				ELSE a.rating
+			END AS avg_rating
+			
+			
+		
+	FROM app_store_apps AS a
+	FULL JOIN play_store_apps AS p
+	ON a.name = p.name
+	),
 
--- OTHER METHOD
 
-	WITH store_count_per_app AS 
-	(
+cte2 AS (
 	SELECT 
-		name, 
-		COUNT(apps_store) AS store_count
-	FROM
-	(
-		SELECT DISTINCT name, 1 AS apps_store FROM app_store_apps
-		UNION ALL
-		SELECT DISTINCT name, 2 AS apps_store  FROM play_store_apps ) AS combined_table
-	GROUP BY name
-	ORDER BY store_count
-	)
+		-- to join tow columns into one
+		COALESCE (play_store_name, apps_store_name) AS app_name,
+		COALESCE(app_genre,play_genre) AS genre,
+		COALESCE(app_content_rating,app_content_rating) AS content_rating,
+		highest_price,
+		purchase_price,
+		store_count,
+		store_count*5000 AS monthly_earnings,
+		COALESCE(ROUND(avg_rating,1),0) AS avg_rating,
+		COALESCE(ROUND(ROUND(avg_rating*2)/2,1),0) AS rounded_rating,
+		COALESCE(ROUND(1+ ROUND(avg_rating*2)/2/0.5),0) AS lifespan_years,
+		COALESCE(ROUND(1+ ROUND(avg_rating*2)/2/0.5) *12,0) AS lifespan_years_to_month
+			
+	FROM cte1)
 
-	SELECT 
-		name, 
-		store_count, 
-		store_count *5000 AS monthly_earnings
-	FROM store_count_per_app
-	where store_count =2
+-- MAIN QUERRY
 
--- c. App Trader will spend an average of $1000 per month to market an app regardless of the price of the app. 
---If App Trader owns rights to the app in both stores, it can market the app for both stores for a single cost of $1000 per month.   
--- - An app that costs $200,000 and an app that costs $1.00 will both cost $1000 a month for marketing, 
---regardless of the number of stores it is in.
-
-	--
-
--- d. For every half point that an app gains in rating, its projected lifespan increases by one year. 
---In other words, an app with a rating of 0 can be expected to be in use for 1 year, an app with a rating of 1.0 can be expected to last 3 years,
---and an app with a rating of 4.0 can be expected to last 9 years.
-
-SELECT distinct content_rating from play_store_apps
-SELECT distinct content_rating from app_store_apps
-
-SELECT content_rating from play_store_apps
-select count(*) from play_store_apps
-where content_rating like 'Unrated'
-
+SELECT DISTINCT
+ 	cte2.app_name,
+	cte2.genre,
+	cte2.content_rating,
+	cte2.highest_price,
+	cte2.purchase_price,
+	cte2.store_count,
+	monthly_earnings,
+	rounded_rating, 
+	lifespan_years,
+	lifespan_years_to_month*1000 AS lifetime_marketing_cost,
+	lifespan_years_to_month*1000 + cte2.purchase_price AS total_amount_spent,
+	lifespan_years_to_month* monthly_earnings AS lifetime_earnings,		
+	(lifespan_years_to_month* monthly_earnings) - (lifespan_years_to_month*1000) - cte2.purchase_price AS profit
 	
-	SELECT 
-		name, 
-		ROUND (AVG(rating),2), 
-		ROUND(ROUND(AVG(rating)*2)/2,2) AS rounded_rating
-	
-	FROM
-		(
-			SELECT 
-				name, 
-				price, 
-				CAST(review_count as numeric), 
-				rating, 
-				content_rating, 
-				primary_genre 
-			FROM app_store_apps
-			UNION
-			SELECT 
-				name, 
-				CAST(REPLACE(TRIM(price),'$','') AS numeric) as price,
-				review_count ,
-				rating , 
-				content_rating, 
-				genres 
-			FROM play_store_apps
-		) AS combined_table
-	
-	GROUP BY name
-	
--- - App store ratings should be calculated by taking the average of the scores from both app stores and rounding to the nearest 0.5.
-
--- e. App Trader would prefer to work with apps that are available in both the App Store and 
---the Play Store since they can market both for the same $1000 per month.
-
+FROM cte2 
+LEFT JOIN cte1
+ON cte1.apps_store_name = cte2.app_name
+AND cte1.play_store_name = cte2.app_name
+ORDER BY profit DESC
 
 
 
